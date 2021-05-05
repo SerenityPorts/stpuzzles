@@ -1,14 +1,14 @@
 cmake_minimum_required(VERSION 3.5)
 
 project(puzzles
-  LANGUAGES C)
+  LANGUAGES C CXX)
 
 include(cmake/setup.cmake)
 
 add_library(common
   combi.c divvy.c drawing.c dsf.c findloop.c grid.c latin.c
   laydomino.c loopgen.c malloc.c matching.c midend.c misc.c penrose.c
-  ps.c random.c sort.c tdq.c tree234.c version.c
+  printing.c ps.c random.c sort.c tdq.c tree234.c version.c
   ${platform_common_sources})
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})

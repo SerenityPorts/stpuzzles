@@ -209,14 +209,34 @@ public:
     void blitter_save(blitter *bl, int x, int y) {
         bl->x = x;
         bl->y = y;
+        auto w = bl->w, h = bl->h;
+        if (bl->x < 0) {
+            w += bl->x;
+            bl->x = 0;
+        }
+        if (bl->y < 0) {
+            h += bl->y;
+            bl->y = 0;
+        }
         GUI::Painter painter(*bl->bitmap);
-        painter.blit({0, 0}, *m_framebuffer, {x, y, bl->w, bl->h});
+        painter.clear_rect({0, 0, bl->w, bl->h}, Color::Transparent);
+        painter.blit({0, 0}, *m_framebuffer, {bl->x, bl->y, w, h});
     }
 
     void blitter_load(blitter *bl, int x, int y) {
         if (x == BLITTER_FROMSAVED) x = bl->x;
         if (y == BLITTER_FROMSAVED) y = bl->y;
-        m_painter->blit({x, y}, *bl->bitmap, {0, 0, bl->w, bl->h});
+        auto w = bl->w, h = bl->h;
+        if (x < 0) {
+            w += x;
+            x = 0;
+        }
+        if (y < 0) {
+            h += y;
+            y = 0;
+        }
+        m_painter->blit({x, y}, *bl->bitmap, {0, 0, w, h});
+        midend_force_redraw(m_midend);
     }
 
     int width() { return m_width; }

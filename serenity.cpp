@@ -2,9 +2,11 @@
 #include <LibGfx/Path.h>
 #include <LibGUI/Action.h>
 #include <LibGUI/Application.h>
+#include <LibGUI/Desktop.h>
 #include <LibGUI/Menu.h>
 #include <LibGUI/Menubar.h>
 #include <LibGUI/Painter.h>
+#include <LibGUI/Statusbar.h>
 #include <LibGUI/Widget.h>
 #include <LibGUI/Window.h>
 #include <stdio.h>
@@ -30,15 +32,6 @@ blitter *blitter_new(void *handle, int w, int h);
 void blitter_free(void *handle, blitter *bl);
 void blitter_save(void *handle, blitter *bl, int x, int y);
 void blitter_load(void *handle, blitter *bl, int x, int y);
-void begin_doc(void *handle, int pages);
-void begin_page(void *handle, int number);
-void begin_puzzle(void *handle, float xm, float xc,
-            float ym, float yc, int pw, int ph, float wmm);
-void end_puzzle(void *handle);
-void end_page(void *handle, int number);
-void end_doc(void *handle);
-void line_width(void *handle, float width);
-void line_dotted(void *handle, bool dotted);
 char *text_fallback(void *handle, const char *const *strings,
             int nstrings);
 void draw_thick_line(void *handle, float thickness,
@@ -61,15 +54,15 @@ const drawing_api dr_api = {
     blitter_free,
     blitter_save,
     blitter_load,
-    begin_doc,
-    begin_page,
-    begin_puzzle,
-    end_puzzle,
-    end_page,
-    end_doc,
-    line_width,
-    line_dotted,
-    text_fallback,
+    nullptr,
+    nullptr,
+    nullptr,
+    nullptr,
+    nullptr,
+    nullptr,
+    nullptr,
+    nullptr,
+    nullptr,
     draw_thick_line
 };
 
@@ -89,19 +82,19 @@ class Frontend : public GUI::Widget {
 public:
     void new_game() {
         midend_new_game(m_midend);
-        m_width = 640, m_height = 480;
+        resize_game();
+        midend_redraw(m_midend);
+    }
+
+    void resize_game() {
+        int width = this->rect().width(), height = this->rect().height();
+        m_width = width, m_height = height;
+        midend_reset_tilesize(m_midend);
         midend_size(m_midend, &m_width, &m_height, true);
-        m_window->resize(m_width, m_height);
+        m_x_offset = (width - m_width) / 2;
+        m_y_offset = (height - m_height) / 2;
         m_framebuffer = Gfx::Bitmap::create(Gfx::BitmapFormat::BGRx8888, {m_width, m_height});
         m_painter = make<GUI::Painter>(*m_framebuffer);
-        int ncolors = 0;
-        auto colors = midend_colours(m_midend, &ncolors);
-        for (int i = 0; i < ncolors * 3; i += 3) {
-            m_colors.append({colors[i] * 255, colors[i + 1] * 255, colors[i + 2] * 255});
-        }
-        int id_limit;
-        m_preset_menu = midend_get_presets(m_midend, &id_limit);
-        midend_redraw(m_midend);
     }
 
     void set_game_params(game_params* params) {
@@ -149,9 +142,21 @@ public:
 
     void draw_text(int x, int y, int fonttype, int fontsize,
             int align, int colour, const char *text) {
-        // FIXME: text alignment
         auto text_view = StringView(text);
-        m_painter->draw_text({x, y, fontsize * text_view.length(), fontsize}, text_view, Gfx::TextAlignment::TopLeft, get_color(colour));
+        auto length = fontsize * text_view.length();
+
+        if (align & ALIGN_VCENTRE)
+            y -= fontsize / 2;
+        else if (align & ALIGN_VNORMAL)
+            y -= fontsize;
+
+        if (align & ALIGN_HCENTRE)
+            x -= length / 2;
+        else if (align & ALIGN_HRIGHT)
+            x -= length;
+
+        Gfx::IntRect rect {x, y, length, fontsize};
+        m_painter->draw_text(rect, text_view, Gfx::TextAlignment::Center, get_color(colour));
     }
 
     void draw_polygon(int *coords, int npoints,
@@ -239,17 +244,35 @@ public:
         midend_force_redraw(m_midend);
     }
 
+    void status_bar(const char *text) {
+        // TODO();
+    }
+
+    bool wants_statusbar() {
+        return midend_wants_statusbar(m_midend);
+    }
+
     int width() { return m_width; }
     int height() { return m_height; }
 private:
     Frontend(NonnullRefPtr<GUI::Window> window) : m_window(window) {
+        m_window->resize(m_width, m_height);
         m_midend = midend_new(&m_frontend, m_game, &dr_api, this);
+        int ncolors = 0;
+        auto colors = midend_colours(m_midend, &ncolors);
+        for (int i = 0; i < ncolors * 3; i += 3) {
+            m_colors.append({colors[i] * 255, colors[i + 1] * 255, colors[i + 2] * 255});
+        }
+        sfree(colors);
+        int id_limit;
+        m_preset_menu = midend_get_presets(m_midend, &id_limit);
         new_game();
     }
 
     virtual void paint_event(GUI::PaintEvent& event) override {
         GUI::Painter painter(*this);
-        painter.draw_scaled_bitmap(event.rect(), *m_framebuffer, m_framebuffer->rect());
+        painter.clear_rect(this->rect(), { 204, 204, 204 });
+        painter.draw_scaled_bitmap({m_x_offset, m_y_offset, m_framebuffer->rect().width(), m_framebuffer->rect().height()}, *m_framebuffer, m_framebuffer->rect());
     }
 
     virtual void timer_event(Core::TimerEvent& event) override {
@@ -265,7 +288,7 @@ private:
         else if (event.button() == GUI::MouseButton::Right) {
             button = RIGHT_BUTTON;
         }
-        if (!midend_process_key(m_midend, event.position().x(), event.position().y(), button)) GUI::Application::the()->quit();
+        if (!midend_process_key(m_midend, event.position().x() - m_x_offset, event.position().y() - m_y_offset, button)) GUI::Application::the()->quit();
     }
 
     virtual void mouseup_event(GUI::MouseEvent& event) override {
@@ -276,7 +299,7 @@ private:
         else if (event.button() == GUI::MouseButton::Right) {
             button = RIGHT_RELEASE;
         }
-        if (!midend_process_key(m_midend, event.position().x(), event.position().y(), button)) GUI::Application::the()->quit();
+        if (!midend_process_key(m_midend, event.position().x() - m_x_offset, event.position().y() - m_y_offset, button)) GUI::Application::the()->quit();
     }
 
     virtual void mousemove_event(GUI::MouseEvent& event) override {
@@ -287,7 +310,7 @@ private:
         else if (event.button() == GUI::MouseButton::Right) {
             button = RIGHT_DRAG;
         }
-        if (!midend_process_key(m_midend, event.position().x(), event.position().y(), button)) GUI::Application::the()->quit();
+        if (!midend_process_key(m_midend, event.position().x() - m_x_offset, event.position().y() - m_y_offset, button)) GUI::Application::the()->quit();
     }
 
     virtual void keydown_event(GUI::KeyEvent& event) override {
@@ -309,7 +332,16 @@ private:
             button = event.code_point();
             break;
         }
+        if (event.ctrl() && event.key() == Key_Z) button = UI_UNDO;
+        if (event.ctrl() && event.key() == Key_Y) button = UI_REDO;
+        if (event.ctrl() && event.key() == Key_N) button = UI_NEWGAME;
         if (!midend_process_key(m_midend, 0, 0, button)) GUI::Application::the()->quit();  
+    }
+
+    virtual void resize_event(GUI::ResizeEvent& event) override {
+        m_width = event.size().width(), m_height = event.size().height();
+        resize_game();
+        midend_force_redraw(m_midend);
     }
 
     Gfx::Color get_color(int n) {
@@ -320,8 +352,9 @@ private:
     frontend m_frontend { this };
     midend* m_midend;
     const game* m_game { &thegame };
-    preset_menu* m_preset_menu;
-    int m_width { 640 }, m_height { 480 };
+    preset_menu* m_preset_menu { nullptr };
+    int m_width { 400 }, m_height { 400 };
+    int m_x_offset { 0 }, m_y_offset { 0 };
     Vector<Gfx::Color> m_colors {};
     RefPtr<Gfx::Bitmap> m_framebuffer;
     OwnPtr<GUI::Painter> m_painter;
@@ -365,13 +398,9 @@ void unclip(void *handle) {
     ((Frontend*)handle)->unclip();
 }
 
-void start_draw(void *handle) {
-    // TODO();
-}
+void start_draw(void *handle) {}
 
-void end_draw(void *handle) {
-    // TODO();
-}
+void end_draw(void *handle) {}
 
 void status_bar(void *handle, const char *text) {
     // TODO();
@@ -393,44 +422,6 @@ void blitter_load(void *handle, blitter *bl, int x, int y) {
     ((Frontend*)handle)->blitter_load(bl, x, y);
 }
 
-void begin_doc(void *handle, int pages) {
-    TODO();
-}
-
-void begin_page(void *handle, int number) {
-    TODO();
-}
-
-void begin_puzzle(void *handle, float xm, float xc,
-            float ym, float yc, int pw, int ph, float wmm) {
-    TODO();
-}
-
-void end_puzzle(void *handle) {
-    TODO();
-}
-
-void end_page(void *handle, int number) {
-    TODO();
-}
-
-void end_doc(void *handle) {
-    TODO();
-}
-
-void line_width(void *handle, float width) {
-    TODO();
-}
-
-void line_dotted(void *handle, bool dotted) {
-    TODO();
-}
-
-char *text_fallback(void *handle, const char *const *strings,
-            int nstrings) {
-    TODO();
-}
-
 void draw_thick_line(void *handle, float thickness,
             float x1, float y1, float x2, float y2,
             int colour) {
@@ -446,7 +437,7 @@ void fatal(const char *fmt, ...) {
 }
 
 void frontend_default_colour(frontend *fe, float *output) {
-    output[0] = output[1] = output[2] = 0.75;
+    output[0] = output[1] = output[2] = 0.80;
 }
 
 void deactivate_timer(frontend *fe) {
@@ -503,7 +494,7 @@ int main(int argc, char** argv) {
     auto window = GUI::Window::construct();
     window->set_title(thegame.name);
     auto& frontend = window->set_main_widget<Frontend>(window);
-    window->set_resizable(false);
+    window->set_resizable(true);
 
     auto menubar = GUI::Menubar::construct();
     auto& game_menu = menubar->add_menu("&Game");
@@ -516,10 +507,15 @@ int main(int argc, char** argv) {
     game_menu.add_action(GUI::Action::create("&Solve Game", [&](auto&) {
         frontend.solve_game();
     }));
+    game_menu.add_action(GUI::Action::create("&Quit Game", [&](auto&) {
+        GUI::Application::the()->quit();
+    }));
 
     auto presets = frontend.get_presets();
-    auto& presets_menu = menubar->add_menu("&Type");
-    create_preset_menu(presets_menu, frontend, presets);
+    if (presets) {
+        auto& presets_menu = menubar->add_menu("&Type");
+        create_preset_menu(presets_menu, frontend, presets);
+    }
 
     window->set_menubar(move(menubar));
     window->show();

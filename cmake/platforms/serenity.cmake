@@ -8,7 +8,7 @@ in a crowded bin directory, e.g. \"sgt-\"")
 set(platform_common_sources serenity.cpp)
 set(platform_gui_libs -lgui -lgfx)
 
-set(platform_libs -lcore -lc)
+set(platform_libs -lcore)
 
 set(build_icons TRUE)
 if(CMAKE_CROSSCOMPILING)

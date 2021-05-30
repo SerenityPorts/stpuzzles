@@ -2,6 +2,7 @@
 #include <LibGfx/Path.h>
 #include <LibGUI/Action.h>
 #include <LibGUI/Application.h>
+#include <LibGUI/BoxLayout.h>
 #include <LibGUI/Desktop.h>
 #include <LibGUI/Menu.h>
 #include <LibGUI/Menubar.h>
@@ -81,6 +82,7 @@ class Frontend : public GUI::Widget {
     C_OBJECT(Frontend);
 public:
     void new_game() {
+        m_game_started = true;
         midend_new_game(m_midend);
         resize_game();
         midend_redraw(m_midend);
@@ -245,11 +247,15 @@ public:
     }
 
     void status_bar(const char *text) {
-        // TODO();
+        m_statusbar->set_text(text);
     }
 
     bool wants_statusbar() {
         return midend_wants_statusbar(m_midend);
+    }
+
+    void set_statusbar(GUI::Statusbar* statusbar) {
+        m_statusbar = statusbar;
     }
 
     int width() { return m_width; }
@@ -266,7 +272,6 @@ private:
         sfree(colors);
         int id_limit;
         m_preset_menu = midend_get_presets(m_midend, &id_limit);
-        new_game();
     }
 
     virtual void paint_event(GUI::PaintEvent& event) override {
@@ -339,6 +344,7 @@ private:
     }
 
     virtual void resize_event(GUI::ResizeEvent& event) override {
+        if (!m_game_started) return;
         m_width = event.size().width(), m_height = event.size().height();
         resize_game();
         midend_force_redraw(m_midend);
@@ -350,7 +356,7 @@ private:
     }
 
     frontend m_frontend { this };
-    midend* m_midend;
+    midend* m_midend { nullptr };
     const game* m_game { &thegame };
     preset_menu* m_preset_menu { nullptr };
     int m_width { 400 }, m_height { 400 };
@@ -360,6 +366,8 @@ private:
     OwnPtr<GUI::Painter> m_painter;
     bool m_timer_enabled { false };
     NonnullRefPtr<GUI::Window> m_window;
+    GUI::Statusbar* m_statusbar { nullptr };
+    bool m_game_started { false };
 };
 
 void draw_text(void *handle, int x, int y, int fonttype, int fontsize,
@@ -403,7 +411,7 @@ void start_draw(void *handle) {}
 void end_draw(void *handle) {}
 
 void status_bar(void *handle, const char *text) {
-    // TODO();
+    ((Frontend*)handle)->status_bar(text);
 }
 
 blitter *blitter_new(void *handle, int w, int h) {
@@ -493,8 +501,16 @@ int main(int argc, char** argv) {
 
     auto window = GUI::Window::construct();
     window->set_title(thegame.name);
-    auto& frontend = window->set_main_widget<Frontend>(window);
     window->set_resizable(true);
+
+    auto& frontend = window->set_main_widget<Frontend>(window);
+    frontend.set_layout<GUI::VerticalBoxLayout>();
+    
+    if (frontend.wants_statusbar()) {
+        frontend.set_statusbar(&frontend.add<GUI::Statusbar>());
+    }
+
+    frontend.new_game();
 
     auto menubar = GUI::Menubar::construct();
     auto& game_menu = menubar->add_menu("&Game");

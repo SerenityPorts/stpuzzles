@@ -28,6 +28,12 @@ if(STRICT AND (CMAKE_CXX_COMPILER_ID MATCHES "GNU" OR
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wwrite-strings -std=c++2a -pedantic -Werror")
 endif()
 
+set(build_cli_programs FALSE)
+set(build_gui_programs FALSE)
+
+function(set_platform_gui_target_properties TARGET)
+endfunction()
+
 function(get_platform_puzzle_extra_source_files OUTVAR NAME)
   if(build_icons AND EXISTS ${CMAKE_SOURCE_DIR}/icons/${NAME}.sav)
     # If we have the equipment to rebuild the puzzles' icon images

@@ -5,6 +5,10 @@
 #ifndef PUZZLES_PUZZLES_H
 #define PUZZLES_PUZZLES_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stdio.h>  /* for FILE */
 #include <stdlib.h> /* for size_t */
 #include <limits.h> /* for UINT_MAX */
@@ -752,5 +756,9 @@ extern char UI_UPDATE[];
 
 /* A little bit of help to lazy developers */
 #define DEFAULT_STATUSBAR_TEXT "Use status_bar() to fill this in."
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* PUZZLES_PUZZLES_H */

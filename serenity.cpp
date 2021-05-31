@@ -243,7 +243,6 @@ public:
             y = 0;
         }
         m_painter->blit({x, y}, *bl->bitmap, {0, 0, w, h});
-        midend_force_redraw(m_midend);
     }
 
     void status_bar(const char *text) {

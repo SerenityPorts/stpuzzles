@@ -95,7 +95,8 @@ public:
         midend_size(m_midend, &m_width, &m_height, true);
         m_x_offset = (width - m_width) / 2;
         m_y_offset = (height - m_height) / 2;
-        m_framebuffer = Gfx::Bitmap::create(Gfx::BitmapFormat::BGRx8888, {m_width, m_height});
+        m_framebuffer = Gfx::Bitmap::try_create(Gfx::BitmapFormat::BGRx8888, {m_width, m_height});
+        VERIFY(m_framebuffer);
         m_painter = make<GUI::Painter>(*m_framebuffer);
     }
 
@@ -205,7 +206,8 @@ public:
         auto blitter = snew(struct blitter);
         blitter->w = w;
         blitter->h = h;
-        blitter->bitmap = Gfx::Bitmap::create(Gfx::BitmapFormat::BGRx8888, {w, h}).leak_ref();
+        blitter->bitmap = Gfx::Bitmap::try_create(Gfx::BitmapFormat::BGRx8888, {w, h}).leak_ref();
+        VERIFY(blitter->bitmap);
         return blitter;
     }
 
@@ -511,8 +513,7 @@ int main(int argc, char** argv) {
 
     frontend.new_game();
 
-    auto menubar = GUI::Menubar::construct();
-    auto& game_menu = menubar->add_menu("&Game");
+    auto& game_menu = window->add_menu("&Game");
     game_menu.add_action(GUI::Action::create("&New Game", [&](auto&) {
         frontend.new_game();
     }));
@@ -528,11 +529,10 @@ int main(int argc, char** argv) {
 
     auto presets = frontend.get_presets();
     if (presets) {
-        auto& presets_menu = menubar->add_menu("&Type");
+        auto& presets_menu = window->add_menu("&Type");
         create_preset_menu(presets_menu, frontend, presets);
     }
 
-    window->set_menubar(move(menubar));
     window->show();
 
     return app->exec();

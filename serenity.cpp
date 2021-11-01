@@ -291,7 +291,7 @@ private:
         if (event.button() == GUI::MouseButton::Middle) {
             button = MIDDLE_BUTTON;
         }
-        else if (event.button() == GUI::MouseButton::Right) {
+        else if (event.button() == GUI::MouseButton::Secondary) {
             button = RIGHT_BUTTON;
         }
         if (!midend_process_key(m_midend, event.position().x() - m_x_offset, event.position().y() - m_y_offset, button)) GUI::Application::the()->quit();
@@ -302,7 +302,7 @@ private:
         if (event.button() == GUI::MouseButton::Middle) {
             button = MIDDLE_RELEASE;
         }
-        else if (event.button() == GUI::MouseButton::Right) {
+        else if (event.button() == GUI::MouseButton::Secondary) {
             button = RIGHT_RELEASE;
         }
         if (!midend_process_key(m_midend, event.position().x() - m_x_offset, event.position().y() - m_y_offset, button)) GUI::Application::the()->quit();
@@ -313,7 +313,7 @@ private:
         if (event.button() == GUI::MouseButton::Middle) {
             button = MIDDLE_DRAG;
         }
-        else if (event.button() == GUI::MouseButton::Right) {
+        else if (event.button() == GUI::MouseButton::Secondary) {
             button = RIGHT_DRAG;
         }
         if (!midend_process_key(m_midend, event.position().x() - m_x_offset, event.position().y() - m_y_offset, button)) GUI::Application::the()->quit();

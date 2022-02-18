@@ -1,4 +1,5 @@
 #include <AK/Random.h>
+#include <LibCore/System.h>
 #include <LibGfx/Path.h>
 #include <LibGUI/Action.h>
 #include <LibGUI/Application.h>
@@ -10,6 +11,7 @@
 #include <LibGUI/Statusbar.h>
 #include <LibGUI/Widget.h>
 #include <LibGUI/Window.h>
+#include <LibMain/Main.h>
 #include <stdio.h>
 #include <unistd.h>
 #include "puzzles.h"
@@ -89,13 +91,12 @@ public:
     }
 
     void resize_game() {
-        int width = this->rect().width(), height = this->rect().height();
-        m_width = width, m_height = height;
+        int game_width = this->rect().width(), game_height = this->rect().height();
         midend_reset_tilesize(m_midend);
-        midend_size(m_midend, &m_width, &m_height, true);
-        m_x_offset = (width - m_width) / 2;
-        m_y_offset = (height - m_height) / 2;
-        m_framebuffer = Gfx::Bitmap::try_create(Gfx::BitmapFormat::BGRx8888, {m_width, m_height});
+        midend_size(m_midend, &game_width, &game_height, true);
+        m_x_offset = (this->rect().width() - game_width) / 2;
+        m_y_offset = (this->rect().height() - game_height) / 2;
+        m_framebuffer = Gfx::Bitmap::try_create(Gfx::BitmapFormat::BGRx8888, {game_width, game_height}).value();
         VERIFY(m_framebuffer);
         m_painter = make<GUI::Painter>(*m_framebuffer);
     }
@@ -206,8 +207,7 @@ public:
         auto blitter = snew(struct blitter);
         blitter->w = w;
         blitter->h = h;
-        blitter->bitmap = Gfx::Bitmap::try_create(Gfx::BitmapFormat::BGRx8888, {w, h}).leak_ref();
-        VERIFY(blitter->bitmap);
+        blitter->bitmap = &Gfx::Bitmap::try_create(Gfx::BitmapFormat::BGRx8888, {w, h}).value().leak_ref();
         return blitter;
     }
 
@@ -255,15 +255,12 @@ public:
         return midend_wants_statusbar(m_midend);
     }
 
-    void set_statusbar(GUI::Statusbar* statusbar) {
+    void set_statusbar(NonnullRefPtr<GUI::Statusbar> statusbar) {
         m_statusbar = statusbar;
     }
-
-    int width() { return m_width; }
-    int height() { return m_height; }
+    
 private:
-    Frontend(NonnullRefPtr<GUI::Window> window) : m_window(window) {
-        m_window->resize(m_width, m_height);
+    Frontend() {
         m_midend = midend_new(&m_frontend, m_game, &dr_api, this);
         int ncolors = 0;
         auto colors = midend_colours(m_midend, &ncolors);
@@ -346,7 +343,6 @@ private:
 
     virtual void resize_event(GUI::ResizeEvent& event) override {
         if (!m_game_started) return;
-        m_width = event.size().width(), m_height = event.size().height();
         resize_game();
         midend_force_redraw(m_midend);
     }
@@ -360,14 +356,12 @@ private:
     midend* m_midend { nullptr };
     const game* m_game { &thegame };
     preset_menu* m_preset_menu { nullptr };
-    int m_width { 400 }, m_height { 400 };
     int m_x_offset { 0 }, m_y_offset { 0 };
     Vector<Gfx::Color> m_colors {};
-    RefPtr<Gfx::Bitmap> m_framebuffer;
-    OwnPtr<GUI::Painter> m_painter;
+    RefPtr<Gfx::Bitmap> m_framebuffer { nullptr };
+    OwnPtr<GUI::Painter> m_painter { nullptr };
     bool m_timer_enabled { false };
-    NonnullRefPtr<GUI::Window> m_window;
-    GUI::Statusbar* m_statusbar { nullptr };
+    RefPtr<GUI::Statusbar> m_statusbar { nullptr };
     bool m_game_started { false };
 };
 
@@ -471,7 +465,7 @@ struct param_ref {
 
 Vector<struct param_ref> g_params;
 
-void create_preset_menu(GUI::Menu& menu, Frontend& frontend, preset_menu* presets, const int id = 0) {
+void create_preset_menu(NonnullRefPtr<GUI::Menu> menu, Frontend& frontend, preset_menu* presets, const int id = 0) {
     for (int i = 0; i < presets->n_entries; i++) {
         auto* preset = &presets->entries[i];
         if (preset->params) {
@@ -483,53 +477,52 @@ void create_preset_menu(GUI::Menu& menu, Frontend& frontend, preset_menu* preset
                     }
             });
             g_params.append({action, preset->params});
-            menu.add_action(action);
+            menu->add_action(action);
         }
         else {
-            auto& submenu = menu.add_submenu(preset->title);
+            auto& submenu = menu->add_submenu(preset->title);
             create_preset_menu(submenu, frontend, preset->submenu);
         }
     }
 }
 
-int main(int argc, char** argv) {
-    if (pledge("stdio rpath accept wpath cpath recvfd sendfd unix fattr", nullptr) < 0) {
-        perror("pledge");
-        return 1;
-    }
+ErrorOr<int> serenity_main(Main::Arguments arguments) {
+    TRY(Core::System::pledge("stdio rpath accept wpath cpath recvfd sendfd unix fattr", nullptr));
 
-    auto app = GUI::Application::construct(argc, argv);
+    auto app = TRY(GUI::Application::try_create(arguments));
 
-    auto window = GUI::Window::construct();
+    auto window = TRY(GUI::Window::try_create());
     window->set_title(thegame.name);
     window->set_resizable(true);
+    window->resize(400, 400);
 
-    auto& frontend = window->set_main_widget<Frontend>(window);
-    frontend.set_layout<GUI::VerticalBoxLayout>();
+    auto frontend = TRY(window->try_set_main_widget<Frontend>());
+    (void)TRY(frontend->try_set_layout<GUI::VerticalBoxLayout>());
     
-    if (frontend.wants_statusbar()) {
-        frontend.set_statusbar(&frontend.add<GUI::Statusbar>());
+    if (frontend->wants_statusbar()) {
+        auto statusbar = TRY(frontend->try_add<GUI::Statusbar>());
+        frontend->set_statusbar(statusbar);
     }
 
-    frontend.new_game();
+    frontend->new_game();
 
-    auto& game_menu = window->add_menu("&Game");
-    game_menu.add_action(GUI::Action::create("&New Game", [&](auto&) {
-        frontend.new_game();
+    auto game_menu = TRY(window->try_add_menu("&Game"));
+    game_menu->add_action(GUI::Action::create("&New Game", [&](auto&) {
+        frontend->new_game();
     }));
-    game_menu.add_action(GUI::Action::create("&Restart Game", [&](auto&) {
-        frontend.restart_game();
+    game_menu->add_action(GUI::Action::create("&Restart Game", [&](auto&) {
+        frontend->restart_game();
     }));
-    game_menu.add_action(GUI::Action::create("&Solve Game", [&](auto&) {
-        frontend.solve_game();
+    game_menu->add_action(GUI::Action::create("&Solve Game", [&](auto&) {
+        frontend->solve_game();
     }));
-    game_menu.add_action(GUI::Action::create("&Quit Game", [&](auto&) {
+    game_menu->add_action(GUI::Action::create("&Quit Game", [&](auto&) {
         GUI::Application::the()->quit();
     }));
 
-    auto presets = frontend.get_presets();
+    auto presets = frontend->get_presets();
     if (presets) {
-        auto& presets_menu = window->add_menu("&Type");
+        auto presets_menu = TRY(window->try_add_menu("&Type"));
         create_preset_menu(presets_menu, frontend, presets);
     }
 

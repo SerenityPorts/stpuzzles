@@ -96,7 +96,7 @@ public:
         midend_size(m_midend, &game_width, &game_height, true);
         m_x_offset = (this->rect().width() - game_width) / 2;
         m_y_offset = (this->rect().height() - game_height) / 2;
-        m_framebuffer = Gfx::Bitmap::try_create(Gfx::BitmapFormat::BGRx8888, {game_width, game_height}).value();
+        m_framebuffer = Gfx::Bitmap::create(Gfx::BitmapFormat::BGRx8888, {game_width, game_height}).value();
         VERIFY(m_framebuffer);
         m_painter = make<GUI::Painter>(*m_framebuffer);
     }
@@ -146,7 +146,7 @@ public:
 
     void draw_text(int x, int y, int fonttype, int fontsize,
             int align, int colour, const char *text) {
-        auto text_view = StringView(text);
+        StringView text_view(text, strlen(text));
         auto length = fontsize * text_view.length();
 
         if (align & ALIGN_VCENTRE)
@@ -159,7 +159,7 @@ public:
         else if (align & ALIGN_HRIGHT)
             x -= length;
 
-        Gfx::IntRect rect {x, y, length, fontsize};
+        Gfx::IntRect rect {x, y, static_cast<int>(length), fontsize};
         m_painter->draw_text(rect, text_view, Gfx::TextAlignment::Center, get_color(colour));
     }
 
@@ -207,7 +207,7 @@ public:
         auto blitter = snew(struct blitter);
         blitter->w = w;
         blitter->h = h;
-        blitter->bitmap = &Gfx::Bitmap::try_create(Gfx::BitmapFormat::BGRx8888, {w, h}).value().leak_ref();
+        blitter->bitmap = &Gfx::Bitmap::create(Gfx::BitmapFormat::BGRx8888, {w, h}).value().leak_ref();
         return blitter;
     }
 
@@ -258,14 +258,18 @@ public:
     void set_statusbar(NonnullRefPtr<GUI::Statusbar> statusbar) {
         m_statusbar = statusbar;
     }
-    
+
 private:
     Frontend() {
         m_midend = midend_new(&m_frontend, m_game, &dr_api, this);
         int ncolors = 0;
         auto colors = midend_colours(m_midend, &ncolors);
         for (int i = 0; i < ncolors * 3; i += 3) {
-            m_colors.append({colors[i] * 255, colors[i + 1] * 255, colors[i + 2] * 255});
+            m_colors.append({
+                static_cast<u8>(colors[i] * 255),
+                static_cast<u8>(colors[i + 1] * 255),
+                static_cast<u8>(colors[i + 2] * 255),
+            });
         }
         sfree(colors);
         int id_limit;
@@ -338,7 +342,7 @@ private:
         if (event.ctrl() && event.key() == Key_Z) button = UI_UNDO;
         if (event.ctrl() && event.key() == Key_Y) button = UI_REDO;
         if (event.ctrl() && event.key() == Key_N) button = UI_NEWGAME;
-        if (!midend_process_key(m_midend, 0, 0, button)) GUI::Application::the()->quit();  
+        if (!midend_process_key(m_midend, 0, 0, button)) GUI::Application::the()->quit();
     }
 
     virtual void resize_event(GUI::ResizeEvent& event) override {
@@ -487,7 +491,7 @@ void create_preset_menu(NonnullRefPtr<GUI::Menu> menu, Frontend& frontend, prese
 }
 
 ErrorOr<int> serenity_main(Main::Arguments arguments) {
-    TRY(Core::System::pledge("stdio rpath accept wpath cpath recvfd sendfd unix fattr", nullptr));
+    TRY(Core::System::pledge("stdio rpath accept wpath cpath recvfd sendfd unix fattr"));
 
     auto app = TRY(GUI::Application::try_create(arguments));
 
@@ -496,9 +500,9 @@ ErrorOr<int> serenity_main(Main::Arguments arguments) {
     window->set_resizable(true);
     window->resize(400, 400);
 
-    auto frontend = TRY(window->try_set_main_widget<Frontend>());
+    auto frontend = TRY(window->set_main_widget<Frontend>());
     (void)TRY(frontend->try_set_layout<GUI::VerticalBoxLayout>());
-    
+
     if (frontend->wants_statusbar()) {
         auto statusbar = TRY(frontend->try_add<GUI::Statusbar>());
         frontend->set_statusbar(statusbar);
